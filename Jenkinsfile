@@ -1,66 +1,60 @@
 pipeline {
     agent any
     environment {
-        DB_URL = 'mysql+pymysql://usr:pwd@host:<port>/db'
-        DISABLE_AUTH = true
-        AWS_ACCESS_KEY_ID = credentials('aws-access-key-id')
-        AWS_SECRET_ACCESS_KEY = credentials('aws-access-secret-key')
+        AUTHOR_NAME='Mohannad Jaradat'
+        AWS_ACCESS_KEY_ID= credentials('aws-access-key-id')
+        AWS_SECRET_ACCESS_KEY_ID= credentials('aws-secret-access-key')
+        DEPLOY_BRANCH = "deploy-py-app"
     }
     stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
         stage("Build") {
             steps {
                 echo "Building the app..."
                 sh '''
-                    echo "This block contains multi-line steps"
-                    ls -lh
+                    python3 -m venv venv
+                    source venv/bin/activate
+                    pip install -r requirements.txt
                 '''
-                sh '''
-                    echo "Database url is: ${DB_URL}"
-                    echo "DISABLE_AUTH is ${DISABLE_AUTH}"
-                    env
-                '''
-                echo "Running a job with build #: ${env.BUILD_NUMBER} on ${env.JENKINS_URL}"
+                echo "The author's name is: ${AUTHOR_NAME}"
             }
         }
         stage("Test") {
             steps {
-                echo "Testing the app..."
+                sh '''
+                    source venv/bin/activate
+                    pytest
+                '''
             }
         }
-        stage("Deploy to Staging") {
+        stage("Deploy") {
             steps {
-                sh 'chmod u+x deploy smoke-tests'
-                sh './deploy staging'
-                sh './smoke-tests'
-            }
-        }
-        stage("Sanity Check") {
-            steps {
-                input "Should we ship to prod?"
-            }
-        }
-        stage("Deploy to Production") {
-            steps {
-                sh './deploy prod'
+                sh '''
+                    echo "Deploying branch: ${DEPLOY_BRANCH} locally..."
+                    sh './deploy.sh ${DEPLOY_BRANCH}'
+                '''
             }
         }
     }
-    post {
+    post{
         always {
             echo "This will always run regardless of the completion status"
         }
-        cleanup {
-            echo "Cleaning the workspace"
-            cleanWs()
-        }
         success {
             echo "This will run if the build succeeded"
+            mail to: 'mohannad.jaradat@cirrusgo.com',
+            subject: "✅ Build Successful: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+            body: "The build was successful.\n\nSee: ${env.BUILD_URL}"
         }
         failure {
             echo "This will run if the job failed"
-            mail to: "ezz.email@gmail.com",
-                 subject: "${env.JOB_NAME} - Build # ${env.BUILD_NUMBER} has failed",
-                 body: "For more info on the pipeline failure, check out the console output at ${env.BUILD_URL}"
+            mail to: 'mohannad.jaradat@cirrusgo.com',
+            subject: "❌ Build Failed: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+            body: "The build has failed.\n\nCheck the console: ${env.BUILD_URL}"
         }
         unstable {
             echo "This will run if the completion status was 'unstable', usually by test failures"
